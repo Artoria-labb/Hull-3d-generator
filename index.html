@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>GA → Hull (MVP)</title>
+  <title>GA → Hull (MVP) — A2 Geometry View Detection</title>
   <link rel="stylesheet" href="style.css" />
 
   <!-- IMPORTANT: define Module BEFORE loading opencv.js -->
@@ -18,17 +18,11 @@
     };
   </script>
 
-  <!-- OpenCV (local file) -->
+  <!-- OpenCV (local file in repo) -->
   <script src="opencv.js"></script>
 
   <!-- PDF.js -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.7.107/pdf.min.js"></script>
-
-  <!-- Tesseract.js (OCR) -->
-  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4.0.2/dist/tesseract.min.js"></script>
-
-  <!-- Rhino3dm (placeholder) -->
-  <script src="https://unpkg.com/rhino3dm@0.16.0/rhino3dm.min.js"></script>
 
   <!-- App logic -->
   <script defer src="script.js"></script>
@@ -37,7 +31,7 @@
 <body>
   <header>
     <h1>GA → Hull (MVP)</h1>
-    <p>Upload one GA PDF/image — OCR will detect Top/Profile/Body views and extract hull contours.</p>
+    <p>Upload 1 GA PDF/image — the app will auto-detect Top / Side / Body by geometry.</p>
   </header>
 
   <main>
@@ -48,17 +42,17 @@
       </div>
 
       <div class="upload-card">
-        <label>Top view (auto-cropped)</label>
+        <label>Top view (auto)</label>
         <canvas id="topCanvas" class="preview"></canvas>
       </div>
 
       <div class="upload-card">
-        <label>Side/Profile view (auto-cropped)</label>
-        <canvas id="profileCanvas" class="preview"></canvas>
+        <label>Side view (auto)</label>
+        <canvas id="sideCanvas" class="preview"></canvas>
       </div>
 
       <div class="upload-card">
-        <label>Body plan (auto-cropped)</label>
+        <label>Body/Sections (auto)</label>
         <canvas id="bodyCanvas" class="preview"></canvas>
       </div>
     </section>
@@ -67,7 +61,7 @@
       <label>Scale (meters per pixel):
         <input id="scaleInput" type="number" value="0.01" step="0.001">
       </label>
-      <button id="detectViews">Detect Views (OCR)</button>
+      <button id="detectViews">Detect Views (geometry)</button>
       <button id="autoDetect">Auto-detect & Vectorize</button>
       <button id="generateHull">Generate Hull (NURBS)</button>
       <button id="export3dm">Export .3dm</button>
