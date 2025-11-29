@@ -105,34 +105,3 @@ window.Module = {
 function extractContoursFromCanvas(canvas, viewName) {
   if (!OPENCV_READY) {
     appendLog("OpenCV not ready yet...");
-    return null;
-  }
-
-  const ctx = canvas.getContext("2d");
-  const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-
-  let src = cv.matFromImageData(imgData);
-  let gray = new cv.Mat();
-  let blur = new cv.Mat();
-  let edges = new cv.Mat();
-
-  cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY, 0);
-  cv.GaussianBlur(gray, blur, new cv.Size(5, 5), 0, 0, cv.BORDER_DEFAULT);
-  cv.Canny(blur, edges, 50, 150, 3, false);
-
-  let contours = new cv.MatVector();
-  let hierarchy = new cv.Mat();
-  cv.findContours(
-    edges,
-    contours,
-    hierarchy,
-    cv.RETR_EXTERNAL,
-    cv.CHAIN_APPROX_SIMPLE
-  );
-
-  appendLog(`[${viewName}] Found ${contours.size()} raw contours`);
-
-  const contourList = [];
-
-  for (let i = 0; i < contours.size(); i++) {
-    const contour = contours.get(i);
