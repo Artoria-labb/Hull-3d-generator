@@ -6,33 +6,36 @@
   <title>GA → Hull (MVP)</title>
   <link rel="stylesheet" href="style.css" />
 
-  <!-- Define Module BEFORE loading OpenCV -->
+  <!-- IMPORTANT: Define Module BEFORE loading opencv.js -->
   <script>
+    window.OPENCV_READY = false;
+
     window.Module = {
       onRuntimeInitialized: function () {
         console.log("OpenCV initialized.");
+        window.OPENCV_READY = true;
         if (window.onOpenCvReady) window.onOpenCvReady();
       }
     };
   </script>
 
-  <!-- Load OpenCV AFTER Module is defined -->
+  <!-- Load OpenCV AFTER Module (CRITICAL) -->
   <script src="opencv.js"></script>
 
-  <!-- PDF.js (CDN) -->
+  <!-- PDF.js -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.7.107/pdf.min.js"></script>
 
   <!-- Rhino3dm -->
   <script src="https://unpkg.com/rhino3dm@0.16.0/rhino3dm.min.js"></script>
 
-  <!-- Your application logic -->
+  <!-- App logic -->
   <script defer src="script.js"></script>
 </head>
 
 <body>
   <header>
     <h1>GA → Hull (MVP)</h1>
-    <p>Upload Top, Side, Profile. AI/CV will extract curves and build a lofted hull (.3dm export).</p>
+    <p>Upload Top, Side, Profile. AI/CV will extract curves.</p>
   </header>
 
   <main>
@@ -48,22 +51,13 @@
       </div>
 
       <div class="upload-card">
-        <label>Profile (bow/stern) view<br/><input id="profileInput" type="file" accept="image/*,.pdf"></label>
+        <label>Profile view<br/><input id="profileInput" type="file" accept="image/*,.pdf"></label>
         <canvas id="profileCanvas" class="preview"></canvas>
       </div>
     </section>
 
     <section class="controls">
-      <label>Scale (meters per pixel): 
-        <input id="scaleInput" type="number" value="0.01" step="0.001">
-      </label>
       <button id="autoDetect">Auto-detect & Vectorize</button>
-      <button id="generateHull">Generate Hull (NURBS)</button>
-      <button id="export3dm">Export .3dm</button>
-    </section>
-
-    <section class="viewer">
-      <div id="preview3d">3D preview will appear here (Three.js)</div>
     </section>
 
     <section class="log">
