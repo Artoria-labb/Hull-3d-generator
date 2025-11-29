@@ -6,13 +6,23 @@
   <title>GA → Hull (MVP)</title>
   <link rel="stylesheet" href="style.css" />
 
-  <!-- Load OpenCV (local file in repo) -->
+  <!-- Define Module BEFORE loading OpenCV -->
+  <script>
+    window.Module = {
+      onRuntimeInitialized: function () {
+        console.log("OpenCV initialized.");
+        if (window.onOpenCvReady) window.onOpenCvReady();
+      }
+    };
+  </script>
+
+  <!-- Load OpenCV AFTER Module is defined -->
   <script src="opencv.js"></script>
 
   <!-- PDF.js (CDN) -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.7.107/pdf.min.js"></script>
 
-  <!-- Rhino3dm (placeholder - loads rhino3dm.js for .3dm export later) -->
+  <!-- Rhino3dm -->
   <script src="https://unpkg.com/rhino3dm@0.16.0/rhino3dm.min.js"></script>
 
   <!-- Your application logic -->
@@ -44,7 +54,9 @@
     </section>
 
     <section class="controls">
-      <label>Scale (meters per pixel): <input id="scaleInput" type="number" value="0.01" step="0.001"></label>
+      <label>Scale (meters per pixel): 
+        <input id="scaleInput" type="number" value="0.01" step="0.001">
+      </label>
       <button id="autoDetect">Auto-detect & Vectorize</button>
       <button id="generateHull">Generate Hull (NURBS)</button>
       <button id="export3dm">Export .3dm</button>
