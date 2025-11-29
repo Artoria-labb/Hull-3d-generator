@@ -6,26 +6,28 @@
   <title>GA → Hull (MVP)</title>
   <link rel="stylesheet" href="style.css" />
 
-  <!-- IMPORTANT: Define Module BEFORE loading opencv.js -->
+  <!-- IMPORTANT: define Module BEFORE loading opencv.js -->
   <script>
     window.OPENCV_READY = false;
-
     window.Module = {
       onRuntimeInitialized: function () {
-        console.log("OpenCV initialized.");
+        console.log("OpenCV runtime initialized.");
         window.OPENCV_READY = true;
         if (window.onOpenCvReady) window.onOpenCvReady();
       }
     };
   </script>
 
-  <!-- Load OpenCV AFTER Module (CRITICAL) -->
+  <!-- OpenCV (local file) -->
   <script src="opencv.js"></script>
 
   <!-- PDF.js -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.7.107/pdf.min.js"></script>
 
-  <!-- Rhino3dm -->
+  <!-- Tesseract.js (OCR) -->
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4.0.2/dist/tesseract.min.js"></script>
+
+  <!-- Rhino3dm (placeholder) -->
   <script src="https://unpkg.com/rhino3dm@0.16.0/rhino3dm.min.js"></script>
 
   <!-- App logic -->
@@ -35,29 +37,44 @@
 <body>
   <header>
     <h1>GA → Hull (MVP)</h1>
-    <p>Upload Top, Side, Profile. AI/CV will extract curves.</p>
+    <p>Upload one GA PDF/image — OCR will detect Top/Profile/Body views and extract hull contours.</p>
   </header>
 
   <main>
     <section class="upload-grid">
       <div class="upload-card">
-        <label>Top view<br/><input id="topInput" type="file" accept="image/*,.pdf"></label>
+        <label>GA file (PDF/image)<br/><input id="gaInput" type="file" accept="image/*,.pdf"></label>
+        <canvas id="fullCanvas" class="preview"></canvas>
+      </div>
+
+      <div class="upload-card">
+        <label>Top view (auto-cropped)</label>
         <canvas id="topCanvas" class="preview"></canvas>
       </div>
 
       <div class="upload-card">
-        <label>Side view<br/><input id="sideInput" type="file" accept="image/*,.pdf"></label>
-        <canvas id="sideCanvas" class="preview"></canvas>
+        <label>Side/Profile view (auto-cropped)</label>
+        <canvas id="profileCanvas" class="preview"></canvas>
       </div>
 
       <div class="upload-card">
-        <label>Profile view<br/><input id="profileInput" type="file" accept="image/*,.pdf"></label>
-        <canvas id="profileCanvas" class="preview"></canvas>
+        <label>Body plan (auto-cropped)</label>
+        <canvas id="bodyCanvas" class="preview"></canvas>
       </div>
     </section>
 
     <section class="controls">
+      <label>Scale (meters per pixel):
+        <input id="scaleInput" type="number" value="0.01" step="0.001">
+      </label>
+      <button id="detectViews">Detect Views (OCR)</button>
       <button id="autoDetect">Auto-detect & Vectorize</button>
+      <button id="generateHull">Generate Hull (NURBS)</button>
+      <button id="export3dm">Export .3dm</button>
+    </section>
+
+    <section class="viewer">
+      <div id="preview3d">3D preview will appear here (Three.js)</div>
     </section>
 
     <section class="log">
