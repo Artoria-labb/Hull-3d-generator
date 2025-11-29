@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>GA → Hull (MVP)</title>
+  <link rel="stylesheet" href="style.css" />
+
+  <!-- Load OpenCV first -->
+  <script async src="opencv.js"></script>
+
+  <!-- Then load your app logic -->
+  <script defer src="script.js"></script>
+</head>
+
+<body>
+  <header>
+    <h1>GA → Hull (MVP)</h1>
+    <p>Upload Top, Side, Profile. AI/CV will extract curves and build a lofted hull (.3dm export).</p>
+  </header>
+
+  <main>
+    <section class="upload-grid">
+      <div class="upload-card">
+        <label>Top view<br/><input id="topInput" type="file" accept="image/*"></label>
+        <canvas id="topCanvas" class="preview"></canvas>
+      </div>
+
+      <div class="upload-card">
+        <label>Side view<br/><input id="sideInput" type="file" accept="image/*"></label>
+        <canvas id="sideCanvas" class="preview"></canvas>
+      </div>
+
+      <div class="upload-card">
+        <label>Profile (bow/stern) view<br/><input id="profileInput" type="file" accept="image/*"></label>
+        <canvas id="profileCanvas" class="preview"></canvas>
+      </div>
+    </section>
+
+    <section class="controls">
+      <label>Scale (meters per pixel): <input id="scaleInput" type="number" value="0.01" step="0.001"></label>
+      <button id="autoDetect">Auto-detect & Vectorize</button>
+      <button id="generateHull">Generate Hull (NURBS)</button>
+      <button id="export3dm">Export .3dm</button>
+    </section>
+
+    <section class="viewer">
+      <div id="preview3d">3D preview will appear here (Three.js)</div>
+    </section>
+
+    <section class="log">
+      <pre id="log"></pre>
+    </section>
+  </main>
+</body>
+</html>
