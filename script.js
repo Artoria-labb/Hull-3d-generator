@@ -1,245 +1,375 @@
-// ===================================================
-// A2 OCR-BASED VIEW DETECTION SYSTEM
-// ===================================================
+// =======================================
+// Full Plan Tracer -> DXF Export (script.js)
+// =======================================
 
-// Logger
-const log = document.getElementById("log");
-function appendLog(msg) {
-  log.textContent += msg + "\n";
-  log.scrollTop = log.scrollHeight;
+const logEl = document.getElementById("log");
+function appendLog(s) {
+  const t = new Date().toTimeString().split(" ")[0];
+  logEl.textContent += `[${t}] ${s}\n`;
+  logEl.scrollTop = logEl.scrollHeight;
 }
 
-// Canvases
+// Elements
+const fileInput = document.getElementById("fileInput");
+const traceBtn = document.getElementById("traceBtn");
+const exportDxfBtn = document.getElementById("exportDxfBtn");
+const downloadPreviewPng = document.getElementById("downloadPreviewPng");
+const scaleInput = document.getElementById("scaleInput");
+
 const fullCanvas = document.getElementById("fullCanvas");
-const topCanvas = document.getElementById("topCanvas");
-const profileCanvas = document.getElementById("profileCanvas");
-const bodyCanvas = document.getElementById("bodyCanvas");
+const overlayCanvas = document.getElementById("overlayCanvas");
+const fullCtx = fullCanvas.getContext("2d");
+const overlayCtx = overlayCanvas.getContext("2d");
 
-// Inputs & buttons
-const gaInput = document.getElementById("gaInput");
-const detectViewsBtn = document.getElementById("detectViews");
-const autoDetectBtn = document.getElementById("autoDetect");
+// traced polylines store: array of arrays of points {x,y}
+let tracedPolylines = [];
 
-// Keyword lists for OCR view detection
-const OCR_KEYWORDS = [
-  { view: "top", words: ["TOP VIEW", "TOP PLAN", "PLAN VIEW", "DECK PLAN"] },
-  { view: "profile", words: ["PROFILE VIEW", "SIDE VIEW", "SHEER PLAN", "ELEVATION"] },
-  { view: "body", words: ["BODY PLAN", "SECTIONS", "FRAME LINES", "LINES PLAN"] },
-  { view: "top", words: ["GENERAL ARRANGEMENT", "GA PLAN", "G.A. PLAN"] }
-];
+// helper: set canvas pixel size to image size
+function setCanvasSizeForImage(canvas, width, height) {
+  canvas.width = width;
+  canvas.height = height;
+  // keep CSS width constrained for UI (optional)
+  const maxW = Math.min(window.innerWidth * 0.45, 1200);
+  canvas.style.width = Math.min(maxW, width) + "px";
+  canvas.style.height = (canvas.height * (parseFloat(canvas.style.width) / canvas.width)) + "px";
+}
 
-// ===================================================
-// 1. RENDER FILE TO CANVAS (PDF or Image)
-// ===================================================
-async function renderFileToCanvas(file, canvas) {
-  const ctx = canvas.getContext("2d");
-
+// render file (pdf first page or image) to fullCanvas
+async function renderFile(file) {
+  appendLog("Rendering file...");
   if (file.name.toLowerCase().endsWith(".pdf")) {
-    const data = await file.arrayBuffer();
-    const pdf = await pdfjsLib.getDocument({ data }).promise;
+    const arrayBuffer = await file.arrayBuffer();
+    const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
     const page = await pdf.getPage(1);
 
-    const viewport = page.getViewport({ scale: 1.8 });
-
-    canvas.width = viewport.width;
-    canvas.height = viewport.height;
-
-    await page.render({ canvasContext: ctx, viewport }).promise;
-    appendLog("PDF rendered to canvas.");
-    return;
-  }
-
-  return new Promise((resolve) => {
-    const img = new Image();
-    img.onload = () => {
-      canvas.width = img.width;
-      canvas.height = img.height;
-      ctx.drawImage(img, 0, 0);
-      appendLog("Image rendered to canvas.");
-      resolve();
-    };
-    const reader = new FileReader();
-    reader.onload = (e) => (img.src = e.target.result);
-    reader.readAsDataURL(file);
-  });
-}
-
-// ===================================================
-// 2. RUN OCR ON FULL CANVAS
-// ===================================================
-async function runOCR(canvas) {
-  appendLog("Running OCR... (5–10 seconds)");
-
-  const worker = Tesseract.createWorker();
-  await worker.load();
-  await worker.loadLanguage("eng");
-  await worker.initialize("eng");
-
-  const result = await worker.recognize(canvas.toDataURL("image/png"));
-  await worker.terminate();
-
-  const words = result.data.words.map(w => ({
-    text: w.text.toUpperCase(),
-    bbox: {
-      x: w.bbox.x0,
-      y: w.bbox.y0,
-      w: w.bbox.x1 - w.bbox.x0,
-      h: w.bbox.y1 - w.bbox.y0
-    }
-  }));
-
-  appendLog(`OCR detected ${words.length} words.`);
-  return words;
-}
-
-// ===================================================
-// 3. MATCH OCR WORDS TO VIEW LABELS
-// ===================================================
-function matchOCR(words) {
-  const assigned = { top: null, profile: null, body: null };
-
-  OCR_KEYWORDS.forEach(group => {
-    group.words.forEach(keyword => {
-      words.forEach(w => {
-        if (w.text.includes(keyword)) {
-          if (!assigned[group.view]) assigned[group.view] = w.bbox;
-        }
-      });
+    // choose scale to get decent resolution
+    const scale = 2.0; // higher = more detail, slower
+    const viewport = page.getViewport({ scale });
+    setCanvasSizeForImage(fullCanvas, Math.floor(viewport.width), Math.floor(viewport.height));
+    fullCtx.setTransform(1, 0, 0, 1, 0, 0);
+    await page.render({ canvasContext: fullCtx, viewport }).promise;
+    appendLog(`PDF page rendered (${fullCanvas.width}x${fullCanvas.height}).`);
+  } else {
+    // image file
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      const img = new Image();
+      reader.onload = (e) => {
+        img.onload = () => {
+          setCanvasSizeForImage(fullCanvas, img.width, img.height);
+          fullCtx.setTransform(1, 0, 0, 1, 0, 0);
+          fullCtx.drawImage(img, 0, 0);
+          appendLog(`Image rendered (${img.width}x${img.height}).`);
+          resolve();
+        };
+        img.onerror = reject;
+        img.src = e.target.result;
+      };
+      reader.readAsDataURL(file);
     });
-  });
-
-  appendLog("Matched OCR boxes: " + JSON.stringify(assigned));
-  return assigned;
+  }
 }
 
-// ===================================================
-// 4. COMPUTE CROP AREAS AROUND DETECTED LABELS
-// ===================================================
-function computeCropArea(bbox, canvas) {
-  const W = canvas.width;
-  const H = canvas.height;
-
-  return {
-    x: Math.max(0, bbox.x - W * 0.05),
-    y: Math.max(0, bbox.y + bbox.h * 1.2),
-    w: Math.min(W * 0.9, W),
-    h: Math.min(H * 0.45, H - bbox.y)
-  };
+// utility: clear overlay canvas and set its same size
+function prepareOverlay() {
+  overlayCanvas.width = fullCanvas.width;
+  overlayCanvas.height = fullCanvas.height;
+  overlayCanvas.style.width = fullCanvas.style.width;
+  overlayCanvas.style.height = fullCanvas.style.height;
+  overlayCtx.setTransform(1, 0, 0, 1, 0, 0);
+  overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+  // draw semi-transparent background so user sees overlay
+  overlayCtx.fillStyle = "rgba(0,0,0,0)";
+  overlayCtx.fillRect(0,0,overlayCanvas.width, overlayCanvas.height);
 }
 
-// ===================================================
-// 5. APPLY CROP FROM FULL CANVAS TO TARGET CANVAS
-// ===================================================
-function cropToCanvas(rect, source, dest) {
-  const ctx = dest.getContext("2d");
-  dest.width = rect.w;
-  dest.height = rect.h;
-
-  ctx.drawImage(
-    source,
-    rect.x, rect.y, rect.w, rect.h,
-    0, 0, rect.w, rect.h
-  );
-}
-
-// ===================================================
-// 6. OCR VIEW DETECTION MAIN FUNCTION
-// ===================================================
-async function detectViews() {
-  if (!fullCanvas.width) {
-    appendLog("❌ No GA loaded yet.");
+// main trace function using OpenCV
+function traceAll() {
+  if (!window.OPENCV_READY) {
+    appendLog("OpenCV not ready.");
+    return;
+  }
+  if (!fullCanvas.width || !fullCanvas.height) {
+    appendLog("No image loaded.");
     return;
   }
 
-  const words = await runOCR(fullCanvas);
-  const boxes = matchOCR(words);
+  appendLog("Starting trace...");
 
-  if (boxes.top) {
-    cropToCanvas(computeCropArea(boxes.top, fullCanvas), fullCanvas, topCanvas);
-    appendLog("✔ Top view cropped");
-  }
+  // prepare overlay
+  prepareOverlay();
 
-  if (boxes.profile) {
-    cropToCanvas(computeCropArea(boxes.profile, fullCanvas), fullCanvas, profileCanvas);
-    appendLog("✔ Profile view cropped");
-  }
-
-  if (boxes.body) {
-    cropToCanvas(computeCropArea(boxes.body, fullCanvas), fullCanvas, bodyCanvas);
-    appendLog("✔ Body plan cropped");
-  }
-
-  appendLog("View detection complete.");
-}
-
-// ===================================================
-// 7. OPENCV HULL EXTRACTION
-// ===================================================
-function extractContoursFromCanvas(canvas, label) {
-  if (!window.OPENCV_READY) {
-    appendLog("❌ OpenCV not ready");
-    return [];
-  }
-
-  const ctx = canvas.getContext("2d");
-  const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-
+  // get image data
+  const imgData = fullCtx.getImageData(0, 0, fullCanvas.width, fullCanvas.height);
   let src = cv.matFromImageData(imgData);
-  let gray = new cv.Mat(), thr = new cv.Mat(), edges = new cv.Mat();
 
+  // Convert to grayscale
+  let gray = new cv.Mat();
   cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
-  cv.threshold(gray, thr, 0, 255, cv.THRESH_BINARY_INV + cv.THRESH_OTSU);
-  cv.Canny(thr, edges, 75, 200);
 
+  // Adaptive threshold to get lines (works well for scans)
+  let bw = new cv.Mat();
+  cv.adaptiveThreshold(gray, bw, 255, cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY_INV, 25, 7);
+
+  // morphological opening/closing to clean speckles and join lines
+  let kernel = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(3,3));
+  let closed = new cv.Mat();
+  cv.morphologyEx(bw, closed, cv.MORPH_CLOSE, kernel, new cv.Point(-1,-1), 1);
+
+  // optionally thin or skeletonize - we will approximate by contour centerlines
+  // use Canny to find edges
+  let edges = new cv.Mat();
+  cv.Canny(closed, edges, 50, 200);
+
+  // find contours on edges (use RETR_LIST to get everything)
   let contours = new cv.MatVector();
   let hierarchy = new cv.Mat();
-  cv.findContours(edges, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+  cv.findContours(edges, contours, hierarchy, cv.RETR_LIST, cv.CHAIN_APPROX_NONE);
 
-  appendLog(`[${label}] All contours: ${contours.size()}`);
+  appendLog(`Contours found: ${contours.size()}`);
 
-  let best = -1;
-  let bestArea = 0;
+  // Convert contours to polylines and simplify
+  tracedPolylines = [];
   for (let i = 0; i < contours.size(); i++) {
-    const area = cv.contourArea(contours.get(i));
-    if (area > bestArea) {
-      bestArea = area;
-      best = i;
+    const cnt = contours.get(i);
+
+    // drop extremely small contours
+    const area = Math.abs(cv.contourArea(cnt));
+    if (area < 9) {
+      cnt.delete();
+      continue;
+    }
+
+    // convert to JS array of points
+    let pts = [];
+    for (let k = 0; k < cnt.data32S.length; k += 2) {
+      pts.push({ x: cnt.data32S[k], y: cnt.data32S[k+1] });
+    }
+
+    // approximate polyline with epsilon relative to perimeter
+    const peri = cv.arcLength(cnt, false);
+    const eps = Math.max(1.0, 0.002 * peri); // tweakable
+    let approx = new cv.Mat();
+    cv.approxPolyDP(cnt, approx, eps, false);
+
+    let poly = [];
+    for (let p = 0; p < approx.data32S.length; p += 2) {
+      poly.push({ x: approx.data32S[p], y: approx.data32S[p+1] });
+    }
+
+    // remove duplicates and very small segments
+    if (poly.length >= 2) {
+      // optionally simplify by removing near-collinear points
+      poly = simplifyPolyline(poly, 0.5); // pixel tolerance
+      if (poly.length >= 2) tracedPolylines.push(poly);
+    }
+
+    approx.delete();
+    cnt.delete();
+  }
+
+  appendLog(`Polylines traced: ${tracedPolylines.length}`);
+
+  // draw overlay preview
+  drawOverlay(tracedPolylines);
+
+  // cleanup
+  src.delete(); gray.delete(); bw.delete(); closed.delete();
+  edges.delete(); contours.delete(); hierarchy.delete();
+
+  appendLog("Trace complete.");
+}
+
+// simple Ramer-Douglas-Peucker polyline simplifier for pixel tolerance
+function simplifyPolyline(points, tolerance) {
+  if (!points || points.length < 3) return points.slice();
+  // recursively
+  function getSqSegDist(p, p1, p2) {
+    let x = p1.x;
+    let y = p1.y;
+    let dx = p2.x - x;
+    let dy = p2.y - y;
+    if (dx !== 0 || dy !== 0) {
+      const t = ((p.x - x) * dx + (p.y - y) * dy) / (dx*dx + dy*dy);
+      if (t > 1) { x = p2.x; y = p2.y; }
+      else if (t > 0) { x += dx * t; y += dy * t; }
+    }
+    dx = p.x - x; dy = p.y - y;
+    return dx*dx + dy*dy;
+  }
+  function simplifyDPStep(pts, first, last, sqTol, out) {
+    let maxSqDist = sqTol, index = -1;
+    for (let i = first + 1; i < last; i++) {
+      const d = getSqSegDist(pts[i], pts[first], pts[last]);
+      if (d > maxSqDist) { index = i; maxSqDist = d; }
+    }
+    if (index > -1) {
+      if (index - first > 1) simplifyDPStep(pts, first, index, sqTol, out);
+      out.push(pts[index]);
+      if (last - index > 1) simplifyDPStep(pts, index, last, sqTol, out);
+    }
+  }
+  const sqTol = tolerance * tolerance;
+  const newPts = [points[0]];
+  simplifyDPStep(points, 0, points.length - 1, sqTol, newPts);
+  newPts.push(points[points.length - 1]);
+  return newPts;
+}
+
+// draw polylines onto overlay canvas for preview
+function drawOverlay(polylines) {
+  overlayCtx.clearRect(0,0,overlayCanvas.width, overlayCanvas.height);
+  overlayCtx.lineWidth = Math.max(1, Math.round(overlayCanvas.width / 1500));
+  overlayCtx.strokeStyle = "#00ff88";
+  overlayCtx.fillStyle = "rgba(0,0,0,0)";
+  for (let i=0;i<polylines.length;i++) {
+    const poly = polylines[i];
+    overlayCtx.beginPath();
+    overlayCtx.moveTo(poly[0].x + 0.5, poly[0].y + 0.5);
+    for (let j=1;j<poly.length;j++) {
+      overlayCtx.lineTo(poly[j].x + 0.5, poly[j].y + 0.5);
+    }
+    overlayCtx.stroke();
+  }
+}
+
+// Convert traced polylines to DXF (LWPOLYLINE entities)
+// scaleMetersPerPixel: how many meters each pixel equals (user input) - optional for storing units
+function buildDxf(polylines, scaleMetersPerPixel) {
+  // DXF header
+  const header = [
+    "0",
+    "SECTION",
+    "2",
+    "HEADER",
+    "9",
+    "$ACADVER",
+    "1",
+    "AC1018", // AutoCAD 2004-compatible
+    "0",
+    "ENDSEC"
+  ];
+
+  // Tables (minimal)
+  const tables = [
+    "0","SECTION","2","TABLES",
+    "0","ENDSEC"
+  ];
+
+  // Entities start
+  const entsStart = ["0","SECTION","2","ENTITIES"];
+
+  // Entities: produce LWPOLYLINE for each polyline (2D XY)
+  const entities = [];
+  for (let i = 0; i < polylines.length; i++) {
+    const poly = polylines[i];
+    if (!poly || poly.length < 2) continue;
+
+    // Build points string
+    // Optionally transform coordinates: flip Y (DXF origin is bottom-left vs canvas top-left)
+    const pts = poly.map(p => {
+      const x = p.x;
+      const y = fullCanvas.height - p.y; // flip Y
+      return { x, y };
+    });
+
+    // LWPOLYLINE header
+    entities.push("0");
+    entities.push("LWPOLYLINE");
+    // number of vertices
+    entities.push("90"); // custom group for number of vertices in some DXF flavors (not required)
+    entities.push(String(pts.length));
+    // polyline flags (1 = closed)
+    const closed = (Math.hypot(pts[0].x-pts[pts.length-1].x, pts[0].y-pts[pts.length-1].y) < 1.5) ? 1 : 0;
+    entities.push("70");
+    entities.push(String(closed));
+    // vertex coordinates: code 10 = x, 20 = y
+    for (let j=0;j<pts.length;j++) {
+      entities.push("10"); entities.push(String((pts[j].x * (scaleMetersPerPixel || 1)).toFixed(6)));
+      entities.push("20"); entities.push(String((pts[j].y * (scaleMetersPerPixel || 1)).toFixed(6)));
     }
   }
 
-  if (best < 0) {
-    appendLog(`[${label}] ❌ No usable contour`);
-    return [];
-  }
+  // End section
+  const entsEnd = ["0","ENDSEC","0","EOF"];
 
-  const hull = contours.get(best);
-  appendLog(`[${label}] Hull area = ${bestArea}`);
-
-  const pts = [];
-  for (let i = 0; i < hull.data32S.length; i += 2) {
-    pts.push({ x: hull.data32S[i], y: hull.data32S[i + 1] });
-  }
-
-  return pts;
+  // combine all pieces
+  const dxfArray = [].concat(header, tables, entsStart, entities, entsEnd);
+  return dxfArray.join("\r\n");
 }
 
-// ===================================================
-// 8. BUTTON HANDLERS
-// ===================================================
-gaInput.addEventListener("change", async (e) => {
-  const file = e.target.files[0];
-  if (!file) return;
+// trigger download of text file
+function downloadText(filename, text) {
+  const blob = new Blob([text], { type: "application/dxf" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
 
-  await renderFileToCanvas(file, fullCanvas);
-  appendLog("Loaded GA file: " + file.name);
+// scale input: meters per pixel; user can enter 0.01 etc.
+function getScale() {
+  const v = parseFloat(scaleInput.value);
+  if (!v || isNaN(v) || v <= 0) return 1.0;
+  return v;
+}
+
+// Export DXF button handler
+exportDxfBtn.addEventListener("click", () => {
+  if (!tracedPolylines || tracedPolylines.length === 0) {
+    appendLog("No polylines to export. Run Trace All first.");
+    return;
+  }
+  appendLog("Building DXF...");
+  // If user provided scale in meters/pixel, we want DXF units to be meters; multiply coords by scale
+  const scale = getScale(); // meters per pixel
+  const dxf = buildDxf(tracedPolylines, scale);
+  const name = "traced_plan.dxf";
+  downloadText(name, dxf);
+  appendLog("DXF exported: " + name);
 });
 
-detectViewsBtn.addEventListener("click", detectViews);
-
-autoDetectBtn.addEventListener("click", () => {
-  appendLog("=== AUTO-DETECT START ===");
-  extractContoursFromCanvas(topCanvas, "top");
-  extractContoursFromCanvas(profileCanvas, "profile");
-  extractContoursFromCanvas(bodyCanvas, "body");
-  appendLog("=== AUTO-DETECT COMPLETE ===");
+// Download preview PNG of overlay (combined)
+downloadPreviewPng.addEventListener("click", () => {
+  // combine full and overlay to a temp canvas
+  const tmp = document.createElement("canvas");
+  tmp.width = fullCanvas.width;
+  tmp.height = fullCanvas.height;
+  const tctx = tmp.getContext("2d");
+  tctx.drawImage(fullCanvas,0,0);
+  tctx.drawImage(overlayCanvas,0,0);
+  const url = tmp.toDataURL("image/png");
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "preview_traced.png";
+  a.click();
+  appendLog("Preview PNG downloaded.");
 });
+
+// Trace button handler
+traceBtn.addEventListener("click", () => {
+  try {
+    traceAll();
+  } catch (e) {
+    appendLog("Trace error: " + (e && e.message ? e.message : String(e)));
+  }
+});
+
+// file input change -> render
+fileInput.addEventListener("change", async (ev) => {
+  const f = ev.target.files?.[0];
+  if (!f) return;
+  tracedPolylines = [];
+  await renderFile(f);
+  prepareOverlay();
+  appendLog("Loaded file: " + f.name);
+});
+
+// When OpenCV is ready, enable UI
+window.onOpenCvReady = function() {
+  appendLog("OpenCV.js ready.");
+};
